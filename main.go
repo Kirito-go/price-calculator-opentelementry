@@ -40,7 +40,10 @@ func main() {
 	ctx := context.Background()
 
 	// Initialize OpenTelemetry
-	cleanup := initOpenTelemetry(ctx)
+	cleanup, err := initOpenTelemetry(ctx)
+	if err != nil {
+		log.Fatalf("Failed to initialize OpenTelemetry: %v", err)
+	}
 	defer cleanup() // Ensure resources are cleaned up on exit
 
 	// Initialize Gorilla Mux router
@@ -52,15 +55,16 @@ func main() {
 	router.Handle("/setTaxRate/{value}", otelhttp.NewHandler(http.HandlerFunc(setTaxRate), "SetTaxRate")).Methods("POST")
 
 	// Start the HTTP server
+	fmt.Println("Server is running on http://localhost:8080")
 	log.Fatal(http.ListenAndServe(":8080", router))
 }
 
 // Initializes OpenTelemetry
-func initOpenTelemetry(ctx context.Context) func() {
+func initOpenTelemetry(ctx context.Context) (func(), error) {
 	// Create the OTLP HTTP exporter
 	exporter, err := otlptracehttp.New(ctx, otlptracehttp.WithEndpoint("localhost:4318"), otlptracehttp.WithInsecure())
 	if err != nil {
-		log.Fatalf("Failed to create OTLP exporter: %v", err)
+		return nil, fmt.Errorf("failed to create OTLP exporter: %v", err)
 	}
 
 	// Define the resource attributes (e.g., service name)
@@ -70,7 +74,7 @@ func initOpenTelemetry(ctx context.Context) func() {
 		),
 	)
 	if err != nil {
-		log.Fatalf("Failed to create resource: %v", err)
+		return nil, fmt.Errorf("failed to create resource: %v", err)
 	}
 
 	// Create the trace provider
@@ -86,9 +90,9 @@ func initOpenTelemetry(ctx context.Context) func() {
 	// Return a cleanup function to shutdown the tracer provider
 	return func() {
 		if err := tp.Shutdown(ctx); err != nil {
-			log.Fatalf("Error shutting down tracer provider: %v", err)
+			log.Printf("Error shutting down tracer provider: %v", err)
 		}
-	}
+	}, nil
 }
 
 // Calculates the total price based on the base price and tax rate
@@ -112,7 +116,12 @@ func calculatePrice(w http.ResponseWriter, r *http.Request) {
 	response := PriceResponse{TotalPrice: totalPrice}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(response) // Send the response as JSON
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		log.Printf("Error encoding response: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+	log.Printf("Calculated total price: %f", totalPrice)
 }
 
 // Sets the base price from the request
@@ -123,13 +132,19 @@ func setBasePrice(w http.ResponseWriter, r *http.Request) {
 	var err error
 	basePrice, err = strconv.ParseFloat(value, 64) // Parse the base price from the URL
 	if err != nil {
+		log.Printf("Invalid base price: %v", err)
 		http.Error(w, "Invalid base price", http.StatusBadRequest)
 		return
 	}
 
 	// Respond with a success message
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]string{"message": "Base price set"})
+	if err := json.NewEncoder(w).Encode(map[string]string{"message": "Base price set"}); err != nil {
+		log.Printf("Error encoding response: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+	log.Printf("Base price set to: %f", basePrice)
 }
 
 // Sets the tax rate from the request
@@ -140,11 +155,17 @@ func setTaxRate(w http.ResponseWriter, r *http.Request) {
 	var err error
 	taxRate, err = strconv.ParseFloat(value, 64) // Parse the tax rate from the URL
 	if err != nil {
+		log.Printf("Invalid tax rate: %v", err)
 		http.Error(w, "Invalid tax rate", http.StatusBadRequest)
 		return
 	}
 
 	// Respond with a success message
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]string{"message": "Tax rate set"})
+	if err := json.NewEncoder(w).Encode(map[string]string{"message": "Tax rate set"}); err != nil {
+		log.Printf("Error encoding response: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+	log.Printf("Tax rate set to: %f", taxRate)
 }
