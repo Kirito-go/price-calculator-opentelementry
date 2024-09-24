@@ -6,10 +6,12 @@ receivers:
 
 exporters:
   logging:
-    logLevel: debug
+    logLevel: {}
+  jaeger:
+    endpoint: "http://localhost:14250"  # gRPC endpoint for Jaeger
 
 service:
   pipelines:
     traces:
       receivers: [otlp]
-      exporters: [logging]
+      exporters: [jaeger, logging]  # Send traces to Jaeger and log them

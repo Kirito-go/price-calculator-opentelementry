@@ -79,7 +79,7 @@ func initOpenTelemetry(ctx context.Context) (func(), error) {
 
 	// Create the trace provider
 	tp := sdktrace.NewTracerProvider(
-		sdktrace.WithBatcher(exporter),
+		sdktrace.WithBatcher(exporter), // OTLP exporter
 		sdktrace.WithResource(res),
 	)
 
